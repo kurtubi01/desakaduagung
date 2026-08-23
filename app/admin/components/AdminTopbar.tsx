@@ -1,12 +1,7 @@
 'use client'
 
-import {
-  Bell,
-  ChevronDown,
-  Menu,
-  Search,
-  UserCircle,
-} from 'lucide-react'
+import { Bell, ChevronDown, Menu, UserCircle } from 'lucide-react'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useEffect, useState } from 'react'
@@ -14,30 +9,59 @@ import { useEffect, useState } from 'react'
 const pageTitles: Record<string, string> = {
   '/admin': 'Dashboard',
   '/admin/dashboard': 'Dashboard',
+  '/admin/pesan': 'Pesan Masuk',
   '/admin/pendaftaran': 'Pendaftaran',
   '/admin/siswa': 'Siswa',
   '/admin/pengaturan': 'Pengaturan',
+  '/admin/notifikasi': 'Notifikasi',
 }
 
-export default function AdminTopbar() {
-  const pathname = usePathname()
+interface AdminTopbarProps {
+  onToggleSidebar?: () => void
+}
 
+export default function AdminTopbar({ onToggleSidebar }: AdminTopbarProps) {
+  const pathname = usePathname()
   const [email, setEmail] = useState('Admin')
+  const [unreadCount, setUnreadCount] = useState<number>(0)
 
   useEffect(() => {
-    async function getUser() {
-      const supabase = createClient()
+    const supabase = createClient()
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+    async function getUnreadNotificationCount() {
+      const { count, error } = await supabase
+        .from('notifikasi')
+        .select('*', { count: 'exact', head: true })
+        .eq('dibaca', false)
 
-      if (user?.email) {
-        setEmail(user.email)
+      if (error) {
+        setUnreadCount(0)
+        return
       }
+
+      setUnreadCount(count ?? 0)
+    }
+
+    async function getUser() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.email) setEmail(user.email)
     }
 
     getUser()
+    getUnreadNotificationCount()
+
+    const channel = supabase
+      .channel('notifikasi_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifikasi' },
+        () => getUnreadNotificationCount()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   const title =
@@ -52,73 +76,55 @@ export default function AdminTopbar() {
   return (
     <header className="sticky top-0 z-30 h-[73px] border-b border-slate-200 bg-white/90 backdrop-blur-xl">
       <div className="flex h-full items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Left */}
+        
+        {/* LEFT */}
         <div className="flex items-center gap-4">
-          {/* Mobile */}
           <button
             type="button"
-            className="rounded-xl border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 lg:hidden"
+            onClick={onToggleSidebar}
+            className="relative z-10 border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 active:bg-slate-100 lg:hidden"
+            aria-label="Toggle Sidebar"
           >
             <Menu size={20} />
           </button>
 
           <div>
-            <h2 className="text-lg font-bold capitalize tracking-tight text-slate-900">
+            <h2 className="text-lg font-black uppercase tracking-tight text-slate-900">
               {title}
             </h2>
-
             <p className="hidden text-xs text-slate-400 sm:block">
-              Kelola sistem Desa Kudaung
+              Kelola sistem Desa Kadu Agung
             </p>
           </div>
         </div>
 
-        {/* Right */}
+        {/* RIGHT */}
         <div className="flex items-center gap-2 sm:gap-4">
-          {/* Search */}
-          <button
-            type="button"
-            className="hidden h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-400 transition hover:border-slate-300 hover:bg-slate-50 md:flex"
-          >
-            <Search size={17} />
-
-            <span>Cari sesuatu...</span>
-
-            <kbd className="ml-5 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[10px]">
-              /
-            </kbd>
-          </button>
-
-          {/* Notification */}
-          <button
-            type="button"
-            className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+          <Link
+            href="/admin/notifikasi"
+            className="relative flex h-10 w-10 items-center justify-center border border-slate-200 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+            title="Lihat notifikasi"
           >
             <Bell size={19} />
+            {unreadCount > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center border border-white bg-red-600 px-1 text-[10px] font-bold text-white">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </Link>
 
-            <span className="absolute right-2.5 top-2 h-1.5 w-1.5 rounded-full bg-red-500 ring-2 ring-white" />
-          </button>
-
-          {/* User */}
           <div className="flex items-center gap-2 border-l border-slate-200 pl-3 sm:gap-3 sm:pl-4">
             <div className="hidden text-right sm:block">
               <p className="max-w-[180px] truncate text-xs font-semibold text-slate-800">
                 {email}
               </p>
-
-              <p className="text-[11px] text-slate-400">
-                Administrator
-              </p>
+              <p className="text-[11px] text-slate-400">Administrator</p>
             </div>
 
-            <button
-              type="button"
-              className="flex items-center gap-1"
-            >
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+            <button type="button" className="flex items-center gap-1">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-slate-500">
                 <UserCircle size={22} />
               </div>
-
               <ChevronDown
                 size={15}
                 className="hidden text-slate-400 sm:block"

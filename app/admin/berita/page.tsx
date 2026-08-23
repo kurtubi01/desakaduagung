@@ -11,6 +11,11 @@ import {
     FileText,
     Eye,
     Archive,
+    Image as ImageIcon,
+    Upload,
+    Loader2,
+    Calendar,
+    Tag,
 } from 'lucide-react'
 
 interface Berita {
@@ -36,7 +41,6 @@ interface FormBerita {
     slug: string
     ringkasan: string
     isi: string
-    gambar_utama: string
     kategori: string
     tag: string
     status: 'draft' | 'diterbitkan' | 'diarsipkan'
@@ -49,7 +53,6 @@ const formAwal: FormBerita = {
     slug: '',
     ringkasan: '',
     isi: '',
-    gambar_utama: '',
     kategori: '',
     tag: '',
     status: 'draft',
@@ -66,6 +69,14 @@ function buatSlug(judul: string) {
         .replace(/--+/g, '-')
 }
 
+function potongDeskripsi(text: string, max = 160) {
+    return text
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, max)
+}
+
 export default function BeritaPage() {
     const [berita, setBerita] = useState<Berita[]>([])
     const [loading, setLoading] = useState(true)
@@ -73,15 +84,19 @@ export default function BeritaPage() {
 
     const [modalTerbuka, setModalTerbuka] = useState(false)
     const [modeEdit, setModeEdit] = useState(false)
+
     const [formFile, setFormFile] = useState<File | null>(null)
-const [previewGambar, setPreviewGambar] = useState<string | null>(null)
-    const [beritaDipilih, setBeritaDipilih] =
-        useState<Berita | null>(null)
+    const [previewGambar, setPreviewGambar] = useState<string | null>(null)
+
+    const [beritaDipilih, setBeritaDipilih] = useState<Berita | null>(null)
 
     const [form, setForm] = useState<FormBerita>(formAwal)
 
     const [pencarian, setPencarian] = useState('')
     const [filterStatus, setFilterStatus] = useState('')
+
+    const [seoJudulManual, setSeoJudulManual] = useState(false)
+    const [seoDeskripsiManual, setSeoDeskripsiManual] = useState(false)
 
     async function ambilBerita() {
         try {
@@ -97,24 +112,17 @@ const [previewGambar, setPreviewGambar] = useState<string | null>(null)
                 params.set('status', filterStatus)
             }
 
-            const response = await fetch(
-                `/api/berita?${params.toString()}`
-            )
-
+            const response = await fetch(`/api/berita?${params.toString()}`)
             const hasil = await response.json()
 
             if (!response.ok) {
-                throw new Error(hasil.pesan)
+                throw new Error(hasil.pesan || 'Gagal mengambil berita.')
             }
 
             setBerita(hasil.data || [])
         } catch (error) {
             console.error(error)
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : 'Gagal mengambil berita.'
-            )
+            alert(error instanceof Error ? error.message : 'Gagal mengambil berita.')
         } finally {
             setLoading(false)
         }
@@ -128,6 +136,10 @@ const [previewGambar, setPreviewGambar] = useState<string | null>(null)
         setModeEdit(false)
         setBeritaDipilih(null)
         setForm(formAwal)
+        setFormFile(null)
+        setPreviewGambar(null)
+        setSeoJudulManual(false)
+        setSeoDeskripsiManual(false)
         setModalTerbuka(true)
     }
 
@@ -140,105 +152,168 @@ const [previewGambar, setPreviewGambar] = useState<string | null>(null)
             slug: item.slug,
             ringkasan: item.ringkasan || '',
             isi: item.isi,
-            gambar_utama: item.gambar_utama || '',
             kategori: item.kategori || '',
             tag: item.tag?.join(', ') || '',
             status: item.status,
-            judul_seo: item.judul_seo || '',
-            deskripsi_seo: item.deskripsi_seo || '',
+            judul_seo: item.judul_seo || item.judul,
+            deskripsi_seo:
+                item.deskripsi_seo ||
+                potongDeskripsi(item.ringkasan || item.isi || ''),
         })
 
+        setFormFile(null)
+        setPreviewGambar(item.gambar_utama || null)
+        setSeoJudulManual(Boolean(item.judul_seo && item.judul_seo !== item.judul))
+        setSeoDeskripsiManual(Boolean(item.deskripsi_seo))
         setModalTerbuka(true)
     }
 
     function tutupModal() {
+        if (previewGambar?.startsWith('blob:')) {
+            URL.revokeObjectURL(previewGambar)
+        }
+
         setModalTerbuka(false)
         setBeritaDipilih(null)
         setForm(formAwal)
+        setFormFile(null)
+        setPreviewGambar(null)
+        setSeoJudulManual(false)
+        setSeoDeskripsiManual(false)
     }
 
     function ubahJudul(judul: string) {
+        const slugBaru = buatSlug(judul)
+
         setForm((sebelumnya) => ({
             ...sebelumnya,
             judul,
-            slug:
-                modeEdit && sebelumnya.slug
-                    ? sebelumnya.slug
-                    : buatSlug(judul),
-            judul_seo:
-                sebelumnya.judul_seo
-                    ? sebelumnya.judul_seo
-                    : judul,
+            slug: modeEdit && sebelumnya.slug ? sebelumnya.slug : slugBaru,
+            judul_seo: seoJudulManual ? sebelumnya.judul_seo : judul,
         }))
+    }
+
+    function ubahRingkasan(ringkasan: string) {
+        setForm((sebelumnya) => ({
+            ...sebelumnya,
+            ringkasan,
+            deskripsi_seo: seoDeskripsiManual
+                ? sebelumnya.deskripsi_seo
+                : potongDeskripsi(ringkasan || sebelumnya.isi),
+        }))
+    }
+
+    function ubahIsi(isi: string) {
+        setForm((sebelumnya) => ({
+            ...sebelumnya,
+            isi,
+            deskripsi_seo: seoDeskripsiManual
+                ? sebelumnya.deskripsi_seo
+                : potongDeskripsi(sebelumnya.ringkasan || isi),
+        }))
+    }
+
+    function pilihGambar(file: File | undefined) {
+        if (!file) return
+
+        if (!file.type.startsWith('image/')) {
+            alert('File harus berupa gambar.')
+            return
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            alert('Ukuran gambar maksimal 5 MB.')
+            return
+        }
+
+        if (previewGambar?.startsWith('blob:')) {
+            URL.revokeObjectURL(previewGambar)
+        }
+
+        const url = URL.createObjectURL(file)
+        setFormFile(file)
+        setPreviewGambar(url)
+    }
+
+    function hapusGambar() {
+        if (previewGambar?.startsWith('blob:')) {
+            URL.revokeObjectURL(previewGambar)
+        }
+
+        setFormFile(null)
+        setPreviewGambar(null)
     }
 
     async function simpanBerita(event: FormEvent) {
         event.preventDefault()
 
-        if (!form.judul || !form.slug || !form.isi) {
-            alert('Judul, slug, dan isi berita wajib diisi.')
+        if (!form.judul.trim()) {
+            alert('Judul berita wajib diisi.')
+            return
+        }
+
+        if (!form.slug.trim()) {
+            alert('Slug berita wajib diisi.')
+            return
+        }
+
+        if (!form.isi.trim()) {
+            alert('Isi berita wajib diisi.')
             return
         }
 
         try {
             setMenyimpan(true)
 
-            const data = {
-                judul: form.judul,
-                slug: form.slug,
-                ringkasan: form.ringkasan,
-                isi: form.isi,
-                gambar_utama: form.gambar_utama,
-                kategori: form.kategori,
-                tag: form.tag
-                    .split(',')
-                    .map((item) => item.trim())
-                    .filter(Boolean),
-                status: form.status,
-                judul_seo: form.judul_seo,
-                deskripsi_seo: form.deskripsi_seo,
+            const data = new FormData()
+            data.append('judul', form.judul)
+            data.append('slug', form.slug)
+            data.append('ringkasan', form.ringkasan)
+            data.append('isi', form.isi)
+            data.append('kategori', form.kategori)
+            data.append(
+                'tag',
+                JSON.stringify(
+                    form.tag
+                        .split(',')
+                        .map((item) => item.trim())
+                        .filter(Boolean)
+                )
+            )
+            data.append('status', form.status)
+            data.append('judul_seo', form.judul_seo)
+            data.append('deskripsi_seo', form.deskripsi_seo)
+
+            if (formFile) {
+                data.append('gambar_utama', formFile)
             }
 
-            const url = modeEdit
-                ? `/api/berita/${beritaDipilih?.id}`
-                : '/api/berita'
+            const url = modeEdit ? `/api/berita/${beritaDipilih?.id}` : '/api/berita'
 
             const response = await fetch(url, {
                 method: modeEdit ? 'PUT' : 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data),
+                body: data,
             })
 
             const hasil = await response.json()
 
             if (!response.ok) {
-                throw new Error(hasil.pesan)
+                throw new Error(hasil.pesan || 'Gagal menyimpan berita.')
             }
 
-            alert(hasil.pesan)
-
+            alert(hasil.pesan || 'Berita berhasil disimpan.')
             tutupModal()
-            ambilBerita()
+            await ambilBerita()
         } catch (error) {
             console.error(error)
-
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : 'Gagal menyimpan berita.'
-            )
+            alert(error instanceof Error ? error.message : 'Gagal menyimpan berita.')
         } finally {
             setMenyimpan(false)
         }
     }
 
     async function hapusBerita(id: string) {
-        const yakin = confirm(
-            'Apakah Anda yakin ingin menghapus berita ini?'
-        )
-
+        const yakin = confirm('Apakah Anda yakin ingin menghapus berita ini?')
         if (!yakin) return
 
         try {
@@ -249,20 +324,14 @@ const [previewGambar, setPreviewGambar] = useState<string | null>(null)
             const hasil = await response.json()
 
             if (!response.ok) {
-                throw new Error(hasil.pesan)
+                throw new Error(hasil.pesan || 'Gagal menghapus berita.')
             }
 
             alert(hasil.pesan)
-
-            ambilBerita()
+            await ambilBerita()
         } catch (error) {
             console.error(error)
-
-            alert(
-                error instanceof Error
-                    ? error.message
-                    : 'Gagal menghapus berita.'
-            )
+            alert(error instanceof Error ? error.message : 'Gagal menghapus berita.')
         }
     }
 
@@ -277,8 +346,8 @@ const [previewGambar, setPreviewGambar] = useState<string | null>(null)
     function badgeStatus(status: Berita['status']) {
         if (status === 'diterbitkan') {
             return (
-                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-                    <Eye size={13} />
+                <span className="inline-flex items-center gap-1 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200">
+                    <Eye size={12} />
                     Diterbitkan
                 </span>
             )
@@ -286,457 +355,406 @@ const [previewGambar, setPreviewGambar] = useState<string | null>(null)
 
         if (status === 'diarsipkan') {
             return (
-                <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600">
-                    <Archive size={13} />
+                <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 border border-slate-200">
+                    <Archive size={12} />
                     Diarsipkan
                 </span>
             )
         }
 
         return (
-            <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-700">
-                <FileText size={13} />
+            <span className="inline-flex items-center gap-1 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 border border-amber-200">
+                <FileText size={12} />
                 Draft
             </span>
         )
     }
 
     return (
-        <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+        <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
             <div className="mx-auto max-w-7xl">
 
                 {/* HEADER */}
-                <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="mb-8 flex flex-col gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">
-                            Berita
+                        <h1 className="text-xl font-bold tracking-tight text-slate-900 uppercase sm:text-2xl">
+                            BERITA & ARTIKEL DESA KADUAGUNG
                         </h1>
-
-                        <p className="mt-1 text-sm text-gray-500">
-                            Kelola berita dan informasi website.
+                        <p className="mt-1 text-xs text-slate-500 sm:text-sm">
+                            Kelola berita dan artikel desa kaduagun dan publikasikan ke halaman utama website desa
                         </p>
                     </div>
 
                     <button
                         onClick={bukaTambah}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+                        className="inline-flex items-center justify-center gap-2 bg-slate-900 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-slate-800 active:bg-slate-950"
                     >
-                        <Plus size={18} />
+                        <Plus size={16} />
                         Tambah Berita
                     </button>
                 </div>
 
-
-                {/* FILTER */}
-                <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+                {/* FILTER & PENCARIAN */}
+                <div className="mb-8 border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-3 md:flex-row">
-
+                        {/* Kolom Pencarian */}
                         <div className="relative flex-1">
                             <Search
                                 size={18}
-                                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
                             />
-
                             <input
                                 type="text"
                                 value={pencarian}
-                                onChange={(event) =>
-                                    setPencarian(event.target.value)
-                                }
+                                onChange={(event) => setPencarian(event.target.value)}
                                 onKeyDown={(event) => {
                                     if (event.key === 'Enter') {
                                         ambilBerita()
                                     }
                                 }}
-                                placeholder="Cari berita..."
-                                className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                placeholder="Cari berita berdasarkan judul..."
+                                className="w-full border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm text-slate-800 outline-none transition focus:border-slate-900 focus:bg-white"
                             />
                         </div>
 
+                        {/* Filter berdasarkan status */}
                         <select
                             value={filterStatus}
-                            onChange={(event) =>
-                                setFilterStatus(event.target.value)
-                            }
-                            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500"
+                            onChange={(event) => setFilterStatus(event.target.value)}
+                            className="border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-medium text-slate-700 outline-none transition focus:border-slate-900 focus:bg-white"
                         >
-                            <option value="">
-                                Semua Status
-                            </option>
-
-                            <option value="draft">
-                                Draft
-                            </option>
-
-                            <option value="diterbitkan">
-                                Diterbitkan
-                            </option>
-
-                            <option value="diarsipkan">
-                                Diarsipkan
-                            </option>
+                            <option value="">Semua Status</option>
+                            <option value="draft">Draft</option>
+                            <option value="diterbitkan">Diterbitkan</option>
+                            <option value="diarsipkan">Diarsipkan</option>
                         </select>
 
                         <button
                             onClick={ambilBerita}
-                            className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            className="border border-slate-900 bg-slate-900 px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-slate-800"
                         >
                             Cari
                         </button>
                     </div>
                 </div>
 
-
-                {/* TABLE */}
-                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                    {loading ? (
-                        <div className="flex h-60 items-center justify-center">
-                            <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
+                {/* CONTAINER CARD BERITA / SKELETON */}
+                {loading ? (
+                    /* SKELETON LOADING */
+                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                            <div
+                                key={i}
+                                className="animate-pulse border border-slate-200 bg-white p-4"
+                            >
+                                <div className="h-48 w-full bg-slate-200" />
+                                <div className="mt-4 flex items-center justify-between">
+                                    <div className="h-4 w-20 bg-slate-200" />
+                                    <div className="h-4 w-16 bg-slate-200" />
+                                </div>
+                                <div className="mt-3 h-5 w-3/4 bg-slate-200" />
+                                <div className="mt-2 h-4 w-full bg-slate-200" />
+                                <div className="mt-1 h-4 w-2/3 bg-slate-200" />
+                                <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+                                    <div className="h-4 w-24 bg-slate-200" />
+                                    <div className="flex gap-2">
+                                        <div className="h-8 w-8 bg-slate-200" />
+                                        <div className="h-8 w-8 bg-slate-200" />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : berita.length === 0 ? (
+                    /* KONDISI KOSONG */
+                    <div className="border border-slate-200 bg-white px-6 py-16 text-center">
+                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center bg-slate-100 text-slate-400">
+                            <FileText size={28} />
                         </div>
-                    ) : berita.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-                            <FileText
-                                size={42}
-                                className="mb-3 text-gray-300"
-                            />
+                        <h3 className="font-bold uppercase tracking-wide text-slate-800">
+                            Belum Ada Berita
+                        </h3>
+                        <p className="mt-1 text-sm text-slate-500">
+                            Tidak ditemukan berita yang sesuai atau belum ada berita baru.
+                        </p>
+                        <button
+                            onClick={bukaTambah}
+                            className="mt-6 inline-flex items-center gap-2 bg-slate-900 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-slate-800"
+                        >
+                            <Plus size={16} />
+                            Tambah Berita Baru
+                        </button>
+                    </div>
+                ) : (
+                    /* CARD BERITA GRID */
+                    <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        {berita.map((item) => (
+                            <div
+                                key={item.id}
+                                className="group flex flex-col justify-between border border-slate-200 bg-white transition hover:border-slate-400 hover:shadow-md"
+                            >
+                                <div>
+                                    {/* Gambar Card */}
+                                    <div className="relative h-48 w-full overflow-hidden bg-slate-100">
+                                        {item.gambar_utama ? (
+                                            <img
+                                                src={item.gambar_utama}
+                                                alt={item.judul}
+                                                className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                                            />
+                                        ) : (
+                                            <div className="flex h-full w-full flex-col items-center justify-center text-slate-400">
+                                                <ImageIcon size={32} />
+                                                <span className="mt-1 text-xs font-medium">Tanpa Gambar</span>
+                                            </div>
+                                        )}
 
-                            <h3 className="font-semibold text-gray-800">
-                                Belum ada berita
-                            </h3>
+                                        <div className="absolute left-3 top-3">
+                                            {badgeStatus(item.status)}
+                                        </div>
+                                    </div>
 
-                            <p className="mt-1 text-sm text-gray-500">
-                                Tambahkan berita pertama Anda.
-                            </p>
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[800px] text-left text-sm">
-                                <thead className="border-b border-gray-200 bg-gray-50">
-                                    <tr>
-                                        <th className="px-5 py-4 font-semibold text-gray-700">
-                                            Berita
-                                        </th>
+                                    {/* Content Card */}
+                                    <div className="p-5">
+                                        <div className="mb-2 flex items-center gap-3 text-xs text-slate-400">
+                                            <span className="inline-flex items-center gap-1">
+                                                <Calendar size={12} />
+                                                {formatTanggal(item.dibuat_pada)}
+                                            </span>
+                                            {item.kategori && (
+                                                <span className="inline-flex items-center gap-1 border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                                    <Tag size={10} />
+                                                    {item.kategori}
+                                                </span>
+                                            )}
+                                        </div>
 
-                                        <th className="px-5 py-4 font-semibold text-gray-700">
-                                            Kategori
-                                        </th>
+                                        <h3 className="line-clamp-2 text-base font-bold text-slate-900 group-hover:text-blue-600">
+                                            {item.judul}
+                                        </h3>
 
-                                        <th className="px-5 py-4 font-semibold text-gray-700">
-                                            Status
-                                        </th>
+                                        <p className="mt-2 line-clamp-3 text-xs leading-relaxed text-slate-500">
+                                            {item.ringkasan || potongDeskripsi(item.isi, 120)}
+                                        </p>
+                                    </div>
+                                </div>
 
-                                        <th className="px-5 py-4 font-semibold text-gray-700">
-                                            Tanggal
-                                        </th>
+                                {/* Card Footer Actions */}
+                                <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3 bg-slate-50/50">
+                                    <span className="truncate text-[11px] font-mono text-slate-400">
+                                        /{item.slug}
+                                    </span>
 
-                                        <th className="px-5 py-4 text-right font-semibold text-gray-700">
-                                            Aksi
-                                        </th>
-                                    </tr>
-                                </thead>
-
-                                <tbody className="divide-y divide-gray-100">
-                                    {berita.map((item) => (
-                                        <tr
-                                            key={item.id}
-                                            className="transition hover:bg-gray-50"
+                                    <div className="flex items-center gap-1">
+                                        <button
+                                            onClick={() => bukaEdit(item)}
+                                            className="border border-slate-200 bg-white p-2 text-slate-700 transition hover:bg-slate-900 hover:text-white"
+                                            title="Edit Berita"
                                         >
-                                            <td className="max-w-md px-5 py-4">
-                                                <div className="flex gap-3">
-                                                    {item.gambar_utama ? (
-                                                        <img
-                                                            src={item.gambar_utama}
-                                                            alt={item.judul}
-                                                            className="h-14 w-20 rounded-lg object-cover"
-                                                        />
-                                                    ) : (
-                                                        <div className="flex h-14 w-20 shrink-0 items-center justify-center rounded-lg bg-gray-100">
-                                                            <FileText
-                                                                size={20}
-                                                                className="text-gray-400"
-                                                            />
-                                                        </div>
-                                                    )}
+                                            <Pencil size={15} />
+                                        </button>
 
-                                                    <div className="min-w-0">
-                                                        <h3 className="line-clamp-2 font-semibold text-gray-900">
-                                                            {item.judul}
-                                                        </h3>
-
-                                                        <p className="mt-1 truncate text-xs text-gray-400">
-                                                            /berita/{item.slug}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </td>
-
-                                            <td className="px-5 py-4 text-gray-600">
-                                                {item.kategori || '-'}
-                                            </td>
-
-                                            <td className="px-5 py-4">
-                                                {badgeStatus(item.status)}
-                                            </td>
-
-                                            <td className="px-5 py-4 text-gray-500">
-                                                {formatTanggal(
-                                                    item.dibuat_pada
-                                                )}
-                                            </td>
-
-                                            <td className="px-5 py-4">
-                                                <div className="flex justify-end gap-2">
-                                                    <button
-                                                        onClick={() =>
-                                                            bukaEdit(item)
-                                                        }
-                                                        className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"
-                                                        title="Edit"
-                                                    >
-                                                        <Pencil size={17} />
-                                                    </button>
-
-                                                    <button
-                                                        onClick={() =>
-                                                            hapusBerita(item.id)
-                                                        }
-                                                        className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                                                        title="Hapus"
-                                                    >
-                                                        <Trash2 size={17} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
+                                        <button
+                                            onClick={() => hapusBerita(item.id)}
+                                            className="border border-slate-200 bg-white p-2 text-red-600 transition hover:bg-red-600 hover:text-white"
+                                            title="Hapus Berita"
+                                        >
+                                            <Trash2 size={15} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
-
-            {/* MODAL */}
+            {/* MODAL EDIT / TAMBAH */}
             {modalTerbuka && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-5">
+                    <div className="flex max-h-[96vh] w-full max-w-5xl flex-col overflow-hidden border border-slate-300 bg-white shadow-2xl">
 
                         {/* MODAL HEADER */}
-                        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
                             <div>
-                                <h2 className="text-lg font-bold text-gray-900">
-                                    {modeEdit
-                                        ? 'Edit Berita'
-                                        : 'Tambah Berita'}
+                                <h2 className="text-base font-bold uppercase tracking-wide text-slate-900">
+                                    {modeEdit ? 'Edit Berita' : 'Tambah Berita Baru'}
                                 </h2>
-
-                                <p className="text-xs text-gray-500">
-                                    Kelola informasi dan SEO berita.
+                                <p className="mt-0.5 text-xs text-slate-500">
+                                    Lengkapi berita dan publikasikan ke website desa.
                                 </p>
                             </div>
 
                             <button
                                 onClick={tutupModal}
-                                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                                className="p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                             >
                                 <X size={20} />
                             </button>
                         </div>
 
-
                         {/* FORM */}
-                        <form
-                            onSubmit={simpanBerita}
-                            className="overflow-y-auto p-5"
-                        >
-                            <div className="grid gap-5 md:grid-cols-2">
+                        <form onSubmit={simpanBerita} className="overflow-y-auto">
+                            <div className="grid gap-6 p-5 sm:p-6 md:grid-cols-2">
+
+                                <div className="md:col-span-2">
+                                    <div className="border-b border-slate-200 pb-2">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                                            Informasi Utama
+                                        </h3>
+                                    </div>
+                                </div>
 
                                 {/* JUDUL */}
                                 <div className="md:col-span-2">
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">
                                         Judul Berita *
                                     </label>
-
                                     <input
                                         type="text"
                                         value={form.judul}
-                                        onChange={(event) =>
-                                            ubahJudul(
-                                                event.target.value
-                                            )
-                                        }
-                                        placeholder="Masukkan judul berita"
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                        onChange={(event) => ubahJudul(event.target.value)}
+                                        placeholder="Contoh: Musyawarah Pembangunan Desa Kaduagung Tahun 2026"
+                                        className="w-full border border-slate-200 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-900"
                                     />
                                 </div>
 
-
                                 {/* SLUG */}
                                 <div>
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">
                                         Slug *
                                     </label>
-
                                     <input
                                         type="text"
                                         value={form.slug}
                                         onChange={(event) =>
                                             setForm({
                                                 ...form,
-                                                slug: event.target.value,
+                                                slug: buatSlug(event.target.value),
                                             })
                                         }
-                                        placeholder="judul-berita"
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                        placeholder="musyawarah-pembangunan-desa"
+                                        className="w-full border border-slate-200 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-900"
                                     />
-
-                                    <p className="mt-1 text-xs text-gray-400">
+                                    <p className="mt-1 text-[11px] text-slate-400">
                                         URL: /berita/{form.slug || 'slug-berita'}
                                     </p>
                                 </div>
 
-
                                 {/* KATEGORI */}
                                 <div>
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">
                                         Kategori
                                     </label>
-
                                     <input
                                         type="text"
                                         value={form.kategori}
                                         onChange={(event) =>
-                                            setForm({
-                                                ...form,
-                                                kategori:
-                                                    event.target.value,
-                                            })
+                                            setForm({ ...form, kategori: event.target.value })
                                         }
-                                        placeholder="Contoh: SPMB"
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                        placeholder="Pengumuman, Pembangunan, Kegiatan"
+                                        className="w-full border border-slate-200 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-900"
                                     />
                                 </div>
-
 
                                 {/* RINGKASAN */}
                                 <div className="md:col-span-2">
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">
                                         Ringkasan
                                     </label>
-
                                     <textarea
                                         value={form.ringkasan}
-                                        onChange={(event) =>
-                                            setForm({
-                                                ...form,
-                                                ringkasan:
-                                                    event.target.value,
-                                            })
-                                        }
+                                        onChange={(event) => ubahRingkasan(event.target.value)}
                                         rows={3}
-                                        placeholder="Ringkasan singkat berita..."
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                        placeholder="Ringkasan singkat berita untuk preview..."
+                                        className="w-full resize-none border border-slate-200 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-900"
                                     />
                                 </div>
-
 
                                 {/* ISI */}
                                 <div className="md:col-span-2">
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">
                                         Isi Berita *
                                     </label>
-
                                     <textarea
                                         value={form.isi}
-                                        onChange={(event) =>
-                                            setForm({
-                                                ...form,
-                                                isi: event.target.value,
-                                            })
-                                        }
+                                        onChange={(event) => ubahIsi(event.target.value)}
                                         rows={12}
-                                        placeholder="Tulis isi berita..."
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                        placeholder="Tuliskan berita lengkap..."
+                                        className="w-full resize-y border border-slate-200 px-4 py-2.5 text-sm leading-relaxed text-slate-800 outline-none focus:border-slate-900"
                                     />
                                 </div>
 
+                                {/* GAMBAR UTAMA */}
+                                <div className="md:col-span-2">
+                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">
+                                        Gambar Utama
+                                    </label>
 
-                                {/* GAMBAR */}
-                               <div className="md:col-span-2">
-    <label className="mb-1.5 block text-sm font-medium text-gray-700">
-        Gambar Utama
-    </label>
-
-    <input
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        onChange={(event) => {
-            const file = event.target.files?.[0]
-
-            if (!file) return
-
-            if (file.size > 5 * 1024 * 1024) {
-                alert('Ukuran gambar maksimal 5 MB.')
-                event.target.value = ''
-                return
-            }
-
-            const url = URL.createObjectURL(file)
-
-            setFormFile(file)
-            setPreviewGambar(url)
-        }}
-        className="block w-full cursor-pointer rounded-xl border border-gray-200 bg-white text-sm text-gray-600 file:mr-4 file:border-0 file:bg-gray-100 file:px-4 file:py-2.5 file:text-sm file:font-medium hover:file:bg-gray-200"
-    />
-
-    <p className="mt-1 text-xs text-gray-400">
-        JPG, PNG atau WebP. Maksimal 5 MB.
-    </p>
-
-    {previewGambar && (
-        <div className="mt-4 overflow-hidden rounded-xl border border-gray-200">
-            <img
-                src={previewGambar}
-                alt="Preview gambar utama"
-                className="h-48 w-full object-cover"
-            />
-        </div>
-    )}
-</div>
-
+                                    <div className="border border-dashed border-slate-300 bg-slate-50 p-4">
+                                        {previewGambar ? (
+                                            <div className="relative border border-slate-200 bg-black">
+                                                <img
+                                                    src={previewGambar}
+                                                    alt="Preview"
+                                                    className="h-56 w-full object-cover sm:h-64"
+                                                />
+                                                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/80 p-3">
+                                                    <span className="truncate text-xs text-white">
+                                                        {formFile ? formFile.name : 'Gambar Berita'}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={hapusGambar}
+                                                        className="inline-flex items-center gap-1 bg-red-600 px-3 py-1 text-xs font-bold text-white hover:bg-red-700"
+                                                    >
+                                                        <Trash2 size={13} />
+                                                        Hapus
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <label className="flex cursor-pointer flex-col items-center justify-center p-8 text-center transition hover:bg-slate-100">
+                                                <Upload size={24} className="text-slate-400" />
+                                                <span className="mt-2 text-xs font-bold uppercase text-slate-700">
+                                                    Upload Gambar Utama
+                                                </span>
+                                                <span className="mt-1 text-[11px] text-slate-400">
+                                                    Format: JPG, PNG, WebP (Maks. 5MB)
+                                                </span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/jpeg,image/png,image/webp"
+                                                    className="hidden"
+                                                    onChange={(event) => pilihGambar(event.target.files?.[0])}
+                                                />
+                                            </label>
+                                        )}
+                                    </div>
+                                </div>
 
                                 {/* TAG */}
                                 <div>
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">
                                         Tag
                                     </label>
-
                                     <input
                                         type="text"
                                         value={form.tag}
-                                        onChange={(event) =>
-                                            setForm({
-                                                ...form,
-                                                tag: event.target.value,
-                                            })
-                                        }
-                                        placeholder="SPMB, Sekolah, Pendaftaran"
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                        onChange={(event) => setForm({ ...form, tag: event.target.value })}
+                                        placeholder="Kaduagung, Berita, Desa"
+                                        className="w-full border border-slate-200 px-4 py-2.5 text-sm text-slate-800 outline-none focus:border-slate-900"
                                     />
-
-                                    <p className="mt-1 text-xs text-gray-400">
-                                        Pisahkan dengan koma.
+                                    <p className="mt-1 text-[11px] text-slate-400">
+                                        Pisahkan tag dengan tanda koma.
                                     </p>
                                 </div>
 
-
                                 {/* STATUS */}
                                 <div>
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                                        Status
+                                    <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-700">
+                                        Status Publikasi
                                     </label>
-
                                     <select
                                         value={form.status}
                                         onChange={(event) =>
@@ -745,98 +763,66 @@ const [previewGambar, setPreviewGambar] = useState<string | null>(null)
                                                 status: event.target.value as FormBerita['status'],
                                             })
                                         }
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500"
+                                        className="w-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-800 outline-none focus:border-slate-900"
                                     >
-                                        <option value="draft">
-                                            Draft
-                                        </option>
-
-                                        <option value="diterbitkan">
-                                            Diterbitkan
-                                        </option>
-
-                                        <option value="diarsipkan">
-                                            Diarsipkan
-                                        </option>
+                                        <option value="draft">Draft</option>
+                                        <option value="diterbitkan">Diterbitkan</option>
+                                        <option value="diarsipkan">Diarsipkan</option>
                                     </select>
                                 </div>
 
-
-                                {/* SEO */}
+                                {/* SEO SECTION */}
                                 <div className="md:col-span-2">
-                                    <div className="mb-4 border-t border-gray-200 pt-5">
-                                        <h3 className="font-semibold text-gray-900">
-                                            Optimasi SEO
+                                    <div className="border border-slate-200 bg-slate-50 p-5">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                                            Pengaturan SEO
                                         </h3>
 
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Informasi ini digunakan oleh mesin pencari seperti Google.
-                                        </p>
+                                        <div className="mt-4 space-y-4">
+                                            <div>
+                                                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                                    Judul SEO
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    maxLength={60}
+                                                    value={form.judul_seo}
+                                                    onChange={(event) => {
+                                                        setSeoJudulManual(true)
+                                                        setForm({ ...form, judul_seo: event.target.value })
+                                                    }}
+                                                    className="w-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-900"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="mb-1 block text-xs font-semibold text-slate-700">
+                                                    Deskripsi SEO
+                                                </label>
+                                                <textarea
+                                                    maxLength={160}
+                                                    rows={3}
+                                                    value={form.deskripsi_seo}
+                                                    onChange={(event) => {
+                                                        setSeoDeskripsiManual(true)
+                                                        setForm({ ...form, deskripsi_seo: event.target.value })
+                                                    }}
+                                                    className="w-full resize-none border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-900"
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
-
-                                {/* JUDUL SEO */}
-                                <div className="md:col-span-2">
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                                        Judul SEO
-                                    </label>
-
-                                    <input
-                                        type="text"
-                                        maxLength={60}
-                                        value={form.judul_seo}
-                                        onChange={(event) =>
-                                            setForm({
-                                                ...form,
-                                                judul_seo:
-                                                    event.target.value,
-                                            })
-                                        }
-                                        placeholder="Judul SEO..."
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                    />
-
-                                    <p className="mt-1 text-xs text-gray-400">
-                                        {form.judul_seo.length}/60 karakter
-                                    </p>
-                                </div>
-
-
-                                {/* DESKRIPSI SEO */}
-                                <div className="md:col-span-2">
-                                    <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                                        Deskripsi SEO
-                                    </label>
-
-                                    <textarea
-                                        maxLength={160}
-                                        rows={3}
-                                        value={form.deskripsi_seo}
-                                        onChange={(event) =>
-                                            setForm({
-                                                ...form,
-                                                deskripsi_seo:
-                                                    event.target.value,
-                                            })
-                                        }
-                                        placeholder="Deskripsi yang akan ditampilkan di mesin pencari..."
-                                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                    />
-
-                                    <p className="mt-1 text-xs text-gray-400">
-                                        {form.deskripsi_seo.length}/160 karakter
-                                    </p>
-                                </div>
                             </div>
 
-
                             {/* FOOTER */}
-                            <div className="mt-6 flex justify-end gap-3 border-t border-gray-200 pt-5">
+                            <div className="sticky bottom-0 flex items-center justify-end gap-3 border-t border-slate-200 bg-white px-6 py-4">
                                 <button
                                     type="button"
                                     onClick={tutupModal}
-                                    className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                                    disabled={menyimpan}
+                                    className="border border-slate-200 px-5 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 hover:bg-slate-100 disabled:opacity-50"
                                 >
                                     Batal
                                 </button>
@@ -844,15 +830,19 @@ const [previewGambar, setPreviewGambar] = useState<string | null>(null)
                                 <button
                                     type="submit"
                                     disabled={menyimpan}
-                                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="inline-flex items-center gap-2 bg-slate-900 px-6 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-slate-800 disabled:opacity-50"
                                 >
-                                    <Save size={17} />
-
-                                    {menyimpan
-                                        ? 'Menyimpan...'
-                                        : modeEdit
-                                          ? 'Simpan Perubahan'
-                                          : 'Simpan Berita'}
+                                    {menyimpan ? (
+                                        <>
+                                            <Loader2 size={15} className="animate-spin" />
+                                            Menyimpan...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Save size={15} />
+                                            {modeEdit ? 'Simpan Perubahan' : 'Simpan Berita'}
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </form>

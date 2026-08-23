@@ -4,50 +4,37 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
-  Users,
   FileText,
-  Settings,
+  MessageCircle,
   LogOut,
   X,
-  GraduationCap,
   ChevronRight,
+  Image as GalleryIcon,
+  Home,
+  Sparkles,
 } from 'lucide-react'
-import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const menuItems = [
-  {
-    title: 'Dashboard',
-    href: '/admin/dashboard',
-    icon: LayoutDashboard,
-  },
-  {
-    title: 'Berita',
-    href: '/admin/berita',
-    icon: FileText,
-  },
-  {
-    title: 'Siswa',
-    href: '/admin/siswa',
-    icon: Users,
-  },
-  {
-    title: 'Pengaturan',
-    href: '/admin/pengaturan',
-    icon: Settings,
-  },
+  { title: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+  { title: 'Berita', href: '/admin/berita', icon: FileText },
+  { title: 'Galeri', href: '/admin/gallery', icon: GalleryIcon },
+  { title: 'Pesan', href: '/admin/pesan', icon: MessageCircle },
+  { title: 'Halaman Utama', href: '/admin/hero', icon: Home },
+  { title: 'Potensi Desa', href: '/admin/potensi', icon: Sparkles },
 ]
 
-export default function AdminSidebar() {
+interface AdminSidebarProps {
+  open: boolean
+  setOpen: (open: boolean) => void
+}
+
+export default function AdminSidebar({ open, setOpen }: AdminSidebarProps) {
   const pathname = usePathname()
-
-  const [open, setOpen] = useState(false)
-
   const supabase = createClient()
 
   async function handleLogout() {
     await supabase.auth.signOut()
-
     window.location.href = '/login'
   }
 
@@ -75,27 +62,25 @@ export default function AdminSidebar() {
           border-r border-slate-200
           bg-white
           shadow-xl shadow-slate-900/5
-          transition-transform duration-300
+          transition-transform duration-300 ease-in-out
           lg:translate-x-0 lg:shadow-none
           ${open ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        {/* Logo */}
+        {/* Header / Logo */}
         <div className="flex h-[73px] items-center justify-between border-b border-slate-100 px-5">
           <Link
             href="/admin/dashboard"
             onClick={() => setOpen(false)}
             className="flex items-center gap-3"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-lg shadow-slate-900/20">
-              <GraduationCap size={22} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-sm font-bold text-white shadow-lg shadow-slate-900/20">
+              KA
             </div>
-
             <div>
               <h1 className="text-sm font-bold tracking-tight text-slate-900">
-                DesaKudaung
+                DESA KADU AGUNG
               </h1>
-
               <p className="text-[11px] font-medium text-slate-400">
                 Admin Panel
               </p>
@@ -106,7 +91,7 @@ export default function AdminSidebar() {
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 lg:hidden"
+            className="p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 lg:hidden"
           >
             <X size={20} />
           </button>
@@ -131,7 +116,7 @@ export default function AdminSidebar() {
                   href={item.href}
                   onClick={() => setOpen(false)}
                   className={`
-                    group flex items-center gap-3 rounded-xl px-3.5 py-3
+                    group flex items-center gap-3 px-3.5 py-3
                     text-sm font-medium
                     transition-all duration-200
                     ${
@@ -150,16 +135,9 @@ export default function AdminSidebar() {
                         : 'text-slate-400 group-hover:text-slate-700'
                     }
                   />
-
-                  <span className="flex-1">
-                    {item.title}
-                  </span>
-
+                  <span className="flex-1">{item.title}</span>
                   {active && (
-                    <ChevronRight
-                      size={16}
-                      className="text-slate-300"
-                    />
+                    <ChevronRight size={16} className="text-slate-300" />
                   )}
                 </Link>
               )
@@ -167,52 +145,21 @@ export default function AdminSidebar() {
           </nav>
         </div>
 
-        {/* Bottom */}
+        {/* Bottom / Logout */}
         <div className="border-t border-slate-100 p-4">
           <button
             type="button"
             onClick={handleLogout}
-            className="group flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium text-slate-500 transition hover:bg-red-50 hover:text-red-600"
+            className="group flex w-full items-center gap-3 px-3.5 py-3 text-sm font-medium text-slate-500 transition hover:bg-red-50 hover:text-red-600"
           >
             <LogOut
               size={19}
               className="text-slate-400 transition group-hover:text-red-500"
             />
-
             <span>Keluar</span>
           </button>
-
-          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-3">
-            <p className="text-[11px] font-medium text-slate-400">
-              Admin Panel
-            </p>
-
-            <p className="mt-0.5 text-xs font-semibold text-slate-700">
-              Desa Kudaung
-            </p>
-          </div>
         </div>
       </aside>
-
-      {/* Mobile menu trigger */}
-      <MobileMenuButton onClick={() => setOpen(true)} />
     </>
-  )
-}
-
-function MobileMenuButton({
-  onClick,
-}: {
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Buka menu"
-      className="fixed bottom-5 left-5 z-30 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-900/20 lg:hidden"
-    >
-      <LayoutDashboard size={21} />
-    </button>
   )
 }

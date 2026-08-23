@@ -1,98 +1,406 @@
 "use client";
 
-import { useEffect, useRef, useState, CSSProperties } from "react";
-import { ArrowUpRight, Maximize2, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { createClient } from "@/lib/supabase/client";
+import { ChevronLeft, ChevronRight, X, Images, Loader2 } from "lucide-react";
 
-interface PhotoItem {
-  src: string;
-  alt: string;
-  size: string;
+interface GalleryItem {
+  id: string;
+  title: string;
+  image_url: string;
+  created_at: string;
 }
 
-const photos: PhotoItem[] = [
-  { src: "/desa.jpeg", alt: "Pemandangan Desa Kadu Agung", size: "md:col-span-2 md:row-span-2" },
-  { src: "/kantor_desa.jpeg", alt: "Kantor Desa Kadu Agung", size: "" },
-  { src: "/emping.jpeg", alt: "Emping melinjo khas Desa Kadu Agung", size: "" },
-  { src: "/pabrik tahu.jpeg", alt: "Pabrik tahu Desa Kadu Agung", size: "md:col-span-2" },
-];
-
 export default function Gallery() {
-  const sectionRef = useRef<HTMLElement | null>(null);
-  const [visible, setVisible] = useState<boolean>(false);
-  const [selectedPhoto, setSelectedPhoto] = useState<PhotoItem | null>(null);
+  const supabase = createClient();
+
+  const [items, setItems] = useState<GalleryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<GalleryItem | null>(null);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  const fetchGallery = useCallback(async () => {
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from("gallery")
+      .select("id, title, image_url, created_at")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Gagal mengambil data galeri:", error);
+      setItems([]);
+    } else {
+      setItems(data || []);
+    }
+
+    setLoading(false);
+  }, [supabase]);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-          observer.disconnect();
-        }
-      },
-      { threshold: 0.12 }
-    );
+    fetchGallery();
+  }, [fetchGallery]);
 
-    if (sectionRef.current) observer.observe(sectionRef.current);
-    return () => observer.disconnect();
-  }, []);
+  const nextImage = () => {
+    if (items.length === 0) return;
 
-  useEffect(() => {
-    if (!selectedPhoto) return undefined;
+    setCurrentIndex((prev) => (prev === items.length - 1 ? 0 : prev + 1));
+  };
 
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelectedPhoto(null);
-    };
+  const previousImage = () => {
+    if (items.length === 0) return;
 
-    document.body.classList.add("modal-is-open");
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.classList.remove("modal-is-open");
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [selectedPhoto]);
+    setCurrentIndex((prev) => (prev === 0 ? items.length - 1 : prev - 1));
+  };
+
+  const formatDate = (date: string) => {
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return "";
+    }
+
+    return parsedDate.toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+  };
 
   return (
-    <section id="galeri" ref={sectionRef} className={`section-reveal py-20 md:py-28 px-5 md:px-8 max-w-6xl mx-auto ${visible ? "section-reveal--visible" : ""}`}>
-      <div className="flex items-end justify-between gap-4 mb-8">
-        <div>
-          <p className="text-[#198754] font-medium italic text-xl mb-2">Galeri Desa</p>
-          <h2 className="text-3xl md:text-5xl font-bold text-[#073b27]">Cerita dalam Foto</h2>
+    <>
+      <section className="bg-white py-16 md:py-20" id="galeri">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          {/* HEADER */}
+          <div className="mb-8 md:mb-10 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-8 h-1 bg-emerald-600" />
+
+                <span className="text-sm font-bold uppercase tracking-wider text-emerald-600">
+                  Dokumentasi Desa
+                </span>
+              </div>
+
+              <h2 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900">
+                Galeri Desa Kadu Agung
+              </h2>
+
+              <p className="mt-2 max-w-2xl text-sm md:text-base text-slate-500">
+                Dokumentasi kegiatan, pembangunan, dan berbagai aktivitas
+                masyarakat Desa Kadu Agung.
+              </p>
+            </div>
+
+            {items.length > 0 && (
+              <div className="hidden md:flex items-center gap-2 text-sm font-semibold text-slate-500">
+                <Images className="w-5 h-5 text-emerald-600" />
+                {items.length} Dokumentasi
+              </div>
+            )}
+          </div>
+
+          {/* LOADING */}
+          {loading && (
+            <div className="flex min-h-62.5 items-center justify-center bg-slate-50">
+              <div className="text-center">
+                <Loader2 className="mx-auto mb-3 h-7 w-7 animate-spin text-emerald-600" />
+
+                <p className="text-sm font-medium text-slate-500">
+                  Memuat galeri...
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* EMPTY */}
+          {!loading && items.length === 0 && (
+            <div className="bg-slate-50 py-16 text-center">
+              <Images className="mx-auto mb-4 h-10 w-10 text-slate-300" />
+
+              <h3 className="font-bold text-slate-700">
+                Belum Ada Dokumentasi
+              </h3>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Dokumentasi kegiatan desa akan tampil di sini.
+              </p>
+            </div>
+          )}
+
+          {/* ================= MOBILE SLIDER ================= */}
+          {!loading && items.length > 0 && (
+            <div className="md:hidden">
+              <div className="relative overflow-hidden bg-slate-100">
+                <div
+                  className="flex transition-transform duration-500 ease-out"
+                  style={{
+                    transform: `translateX(-${currentIndex * 100}%)`,
+                  }}
+                >
+                  {items.map((item) => (
+                    <div key={item.id} className="relative min-w-full">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedImage(item)}
+                        className="block w-full text-left"
+                      >
+                        <div className="relative aspect-4/3 w-full">
+                          <Image
+                            src={item.image_url}
+                            alt={item.title}
+                            fill
+                            sizes="100vw"
+                            className="object-cover"
+                          />
+
+                          {/* Overlay */}
+                          <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/70 to-transparent p-5 pt-16">
+                            <h3 className="text-lg font-bold text-white">
+                              {item.title}
+                            </h3>
+
+                            <p className="mt-1 text-xs text-slate-200">
+                              {formatDate(item.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                {/* PREVIOUS */}
+                {items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={previousImage}
+                    aria-label="Foto sebelumnya"
+                    className="
+                      absolute
+                      left-3
+                      top-1/2
+                      -translate-y-1/2
+                      flex
+                      h-10
+                      w-10
+                      items-center
+                      justify-center
+                      bg-white/90
+                      text-slate-800
+                      hover:bg-white
+                      transition
+                    "
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                )}
+
+                {/* NEXT */}
+                {items.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={nextImage}
+                    aria-label="Foto berikutnya"
+                    className="
+                      absolute
+                      right-3
+                      top-1/2
+                      -translate-y-1/2
+                      flex
+                      h-10
+                      w-10
+                      items-center
+                      justify-center
+                      bg-white/90
+                      text-slate-800
+                      hover:bg-white
+                      transition
+                    "
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
+
+              {/* DOTS */}
+              {items.length > 1 && (
+                <div className="mt-4 flex items-center justify-center gap-1.5">
+                  {items.map((item, index) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setCurrentIndex(index)}
+                      aria-label={`Lihat foto ${index + 1}`}
+                      className={`
+                        h-1.5
+                        transition-all
+                        ${
+                          index === currentIndex
+                            ? "w-7 bg-emerald-600"
+                            : "w-2 bg-slate-300"
+                        }
+                      `}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* MOBILE SWIPE HINT */}
+              <p className="mt-4 text-center text-xs text-slate-400">
+                Geser atau gunakan tombol untuk melihat foto lainnya
+              </p>
+            </div>
+          )}
+
+          {/* ================= DESKTOP GRID ================= */}
+          {!loading && items.length > 0 && (
+            <div className="hidden md:grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSelectedImage(item)}
+                  className="
+                    group
+                    bg-slate-50
+                    text-left
+                    overflow-hidden
+                    focus:outline-none
+                    focus:ring-2
+                    focus:ring-emerald-500
+                  "
+                >
+                  {/* IMAGE */}
+                  <div className="relative aspect-4/3 overflow-hidden bg-slate-100">
+                    <Image
+                      src={item.image_url}
+                      alt={item.title}
+                      fill
+                      sizes="
+                        (min-width: 1280px) 25vw,
+                        (min-width: 1024px) 33vw,
+                        50vw
+                      "
+                      className="
+                        object-cover
+                        transition-transform
+                        duration-500
+                        group-hover:scale-105
+                      "
+                    />
+
+                    {/* Hover Overlay */}
+                    <div
+                      className="
+                      absolute
+                      inset-0
+                      bg-black/0
+                      group-hover:bg-black/20
+                      transition
+                    "
+                    />
+                  </div>
+
+                  {/* CONTENT */}
+                  <div className="p-4">
+                    <h3
+                      className="
+                      line-clamp-2
+                      font-bold
+                      text-slate-800
+                      group-hover:text-emerald-700
+                      transition
+                    "
+                    >
+                      {item.title}
+                    </h3>
+
+                    <p className="mt-2 text-xs text-slate-400">
+                      {formatDate(item.created_at)}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        <ArrowUpRight className="text-[#198754] shrink-0" size={28} />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 md:grid-rows-2 gap-3 md:gap-4 md:h-[430px]">
-        {photos.map((photo, index) => (
+      </section>
+
+      {/* ================= LIGHTBOX ================= */}
+      {selectedImage && (
+        <div
+          className="
+            fixed
+            inset-0
+            z-50
+            bg-black/90
+            flex
+            items-center
+            justify-center
+            p-4
+          "
+          onClick={() => setSelectedImage(null)}
+        >
+          {/* CLOSE */}
           <button
             type="button"
-            key={photo.alt}
-            onClick={() => setSelectedPhoto(photo)}
-            className={`gallery-tile group relative overflow-hidden rounded-3xl min-h-40 text-left ${photo.size}`}
-            aria-label={`Buka foto: ${photo.alt}`}
-            style={{ "--tile-index": index } as CSSProperties}
+            onClick={() => setSelectedImage(null)}
+            className="
+              absolute
+              right-4
+              top-4
+              z-10
+              flex
+              h-11
+              w-11
+              items-center
+              justify-center
+              bg-white
+              text-slate-800
+              hover:bg-slate-100
+              transition
+            "
+            aria-label="Tutup"
           >
-            <Image src={photo.src} alt={photo.alt} fill sizes="(max-width: 768px) 50vw, 50vw" className="object-cover transition duration-700 group-hover:scale-105" />
-            <span className="gallery-tile__overlay absolute inset-0 flex items-end justify-between bg-gradient-to-t from-black/55 via-transparent to-transparent p-4 text-white">
-              <span className="max-w-[80%] text-xs font-medium leading-snug">{photo.alt}</span>
-              <Maximize2 size={18} className="gallery-tile__icon" />
-            </span>
+            <X className="h-5 w-5" />
           </button>
-        ))}
-      </div>
 
-      {selectedPhoto ? (
-        <div className="gallery-lightbox fixed inset-0 z-[70] flex items-center justify-center bg-[#031d13]/90 px-5 py-8" onClick={() => setSelectedPhoto(null)}>
-          <div className="relative h-full w-full max-w-5xl" role="dialog" aria-modal="true" aria-label={selectedPhoto.alt} onClick={(event) => event.stopPropagation()}>
-            <button type="button" onClick={() => setSelectedPhoto(null)} className="absolute right-0 top-0 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 active:scale-95" aria-label="Tutup galeri">
-              <X size={22} />
-            </button>
-            <div className="relative h-full w-full overflow-hidden rounded-2xl">
-              <Image src={selectedPhoto.src} alt={selectedPhoto.alt} fill sizes="100vw" className="object-contain" priority />
+          {/* IMAGE */}
+          <div
+            className="
+              relative
+              w-full
+              max-w-5xl
+              max-h-[90vh]
+            "
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative aspect-video w-full">
+              <Image
+                src={selectedImage.image_url}
+                alt={selectedImage.title}
+                fill
+                sizes="100vw"
+                className="object-contain"
+              />
             </div>
-            <p className="absolute bottom-0 left-0 right-0 rounded-b-2xl bg-gradient-to-t from-black/70 to-transparent px-5 pb-5 pt-12 text-sm text-white">{selectedPhoto.alt}</p>
+
+            {/* TITLE */}
+            <div className="bg-white px-5 py-4">
+              <h3 className="font-bold text-slate-900">
+                {selectedImage.title}
+              </h3>
+
+              <p className="mt-1 text-xs text-slate-500">
+                {formatDate(selectedImage.created_at)}
+              </p>
+            </div>
           </div>
         </div>
-      ) : null}
-    </section>
+      )}
+    </>
   );
 }

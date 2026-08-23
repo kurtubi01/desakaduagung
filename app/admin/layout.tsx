@@ -1,28 +1,22 @@
-import { ReactNode } from 'react'
-import AdminSidebar from './components/AdminSidebar'
+'use client'
+
+import { useState } from 'react'
 import AdminTopbar from './components/AdminTopbar'
+import AdminSidebar from './components/AdminSidebar'
 
-export default function AdminLayout({
-  children,
-}: {
-  children: ReactNode
-}) {
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      {/* Sidebar */}
-      <AdminSidebar />
+    <div className="flex min-h-screen bg-slate-50">
+      {/* Passing state & function ke Sidebar */}
+      <AdminSidebar open={sidebarOpen} setOpen={setSidebarOpen} />
 
-      {/* Area kanan */}
-      <div className="lg:pl-72">
-        {/* Topbar */}
-        <AdminTopbar />
+      <div className="flex flex-1 flex-col lg:pl-72">
+        {/* Passing handler ke Topbar */}
+        <AdminTopbar onToggleSidebar={() => setSidebarOpen((prev) => !prev)} />
 
-        {/* Main Content */}
-        <main className="min-h-[calc(100vh-73px)] p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto w-full max-w-[1600px]">
-            {children}
-          </div>
-        </main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   )
